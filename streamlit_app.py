@@ -1,93 +1,99 @@
 import streamlit as st
-import pandas as pd
-import random
-from datetime import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+import math
 
-st.set_page_config(page_title="주사위 굴리기 앱", layout="wide")
+st.set_page_config(page_title="도형탐험대", layout="wide")
 
-st.title("주사위 굴리기 🎲")
-st.markdown("간단한 주사위를 굴려서 결과와 분포, 히스토리를 확인해보세요.")
+st.title("도형탐험대 �")
+st.markdown("사용자가 도형을 선택하고 크기를 조절해 넓이와 둘레를 확인하고, matplotlib으로 시각화해봅니다.")
 
-# --- 사이드바: 설정
-with st.sidebar:
-    st.header("설정")
-    num_dice = st.number_input("굴릴 주사위 개수", min_value=1, max_value=10, value=1, step=1)
-    sides = st.selectbox("주사위 면수", options=[4,6,8,10,12,20], index=1)
-    keep_history = st.checkbox("히스토리 저장", value=True)
-    st.write("---")
-    st.markdown("앱 버전: 1.0  \n사용법: 주사위 개수와 면수를 선택 후 '굴리기'를 눌러 결과를 확인하세요.")
-
-
-# 초기화: 세션 상태에 히스토리 저장
-if "dice_history" not in st.session_state:
-    st.session_state.dice_history = []  # 각 항목은 dict: {ts, n, sides, results}
-
-
-def roll_dice(n: int, sides: int):
-    """n개의 주사위를 굴려 결과 리스트 반환"""
-    return [random.randint(1, sides) for _ in range(n)]
-
+shape = st.selectbox("도형 선택", ["삼각형", "사각형", "원"]) 
 
 col1, col2 = st.columns([2, 1])
 
-with col1:
-    if st.button("굴리기 🎲"):
-        results = roll_dice(num_dice, sides)
-        total = sum(results)
-        avg = total / len(results)
-        ts = datetime.now().isoformat(sep=' ', timespec='seconds')
+area = None
+perimeter = None
 
-        # 저장 (선택 시)
-        entry = {"timestamp": ts, "num_dice": num_dice, "sides": sides, "results": results, "total": total, "avg": avg}
-        if keep_history:
-            st.session_state.dice_history.insert(0, entry)  # 최신순
+if shape == "삼각형":
+    st.subheader("삼각형 설정")
+    a = st.slider("변 a (BC)", min_value=0.5, max_value=20.0, value=3.0, step=0.1)
+    b = st.slider("변 b (CA)", min_value=0.5, max_value=20.0, value=4.0, step=0.1)
+    c = st.slider("변 c (AB)", min_value=0.5, max_value=20.0, value=5.0, step=0.1)
 
-        # 결과 출력
-        st.subheader("이번 굴림 결과")
-        st.write(f"시간: {ts}")
-        st.write(f"개별 결과: {results}")
-        st.metric("합계", total)
-        st.write(f"평균: {avg:.2f}")
+    # 유효성 검사: 삼각형 부등식
+    valid = (a + b > c) and (b + c > a) and (c + a > b)
+    if not valid:
+        st.warning("선택한 길이로는 삼각형을 만들 수 없습니다. 세 값을 조정하세요.")
+    else:
+        s = 0.5 * (a + b + c)
+        area = math.sqrt(max(0.0, s * (s - a) * (s - b) * (s - c)))
+        perimeter = a + b + c
 
-        # 분포(간단한 막대)
-        counts = pd.Series(results).value_counts().sort_index()
-        df_counts = counts.rename_axis('value').reset_index(name='count')
-        st.bar_chart(df_counts.set_index('value'))
+        # 좌표 계산: A=(0,0), B=(c,0), C=(x,y)
+        c_len = c
+        x = (b * b + c_len * c_len - a * a) / (2 * c_len)
+        y_sq = max(0.0, b * b - x * x)
+        y = math.sqrt(y_sq)
+        pts = np.array([[0.0, 0.0], [c_len, 0.0], [x, y], [0.0, 0.0]])
 
+        fig, ax = plt.subplots(figsize=(5,5))
+        ax.plot(pts[:,0], pts[:,1], '-o')
+        ax.set_aspect('equal', 'box')
+        pad = max(a,b,c) * 0.2
+        xmin, xmax = pts[:,0].min() - pad, pts[:,0].max() + pad
+        ymin, ymax = pts[:,1].min() - pad, pts[:,1].max() + pad
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.set_title(f"삼각형: a={a:.2f}, b={b:.2f}, c={c:.2f}")
+        st.pyplot(fig)
+
+elif shape == "사각형":
+    st.subheader("사각형 설정")
+    w = st.slider("가로 (width)", min_value=0.5, max_value=30.0, value=6.0, step=0.1)
+    h = st.slider("세로 (height)", min_value=0.5, max_value=30.0, value=4.0, step=0.1)
+
+    area = w * h
+    perimeter = 2 * (w + h)
+
+    # 사각형 좌표 (원점 중심 정렬)
+    pts = np.array([[0,0],[w,0],[w,h],[0,h],[0,0]])
+    fig, ax = plt.subplots(figsize=(5,5))
+    ax.plot(pts[:,0], pts[:,1], '-o')
+    ax.set_aspect('equal', 'box')
+    pad = max(w,h) * 0.2
+    ax.set_xlim(-pad, w + pad)
+    ax.set_ylim(-pad, h + pad)
+    ax.set_title(f"사각형: width={w:.2f}, height={h:.2f}")
+    st.pyplot(fig)
+
+else:  # 원
+    st.subheader("원 설정")
+    r = st.slider("반지름 (radius)", min_value=0.1, max_value=15.0, value=3.0, step=0.1)
+    area = math.pi * r * r
+    perimeter = 2 * math.pi * r
+
+    fig, ax = plt.subplots(figsize=(5,5))
+    circle = plt.Circle((0,0), r, fill=False, linewidth=2)
+    ax.add_patch(circle)
+    ax.set_aspect('equal', 'box')
+    pad = r * 0.3
+    ax.set_xlim(-r - pad, r + pad)
+    ax.set_ylim(-r - pad, r + pad)
+    ax.set_title(f"원: radius={r:.2f}")
+    st.pyplot(fig)
+
+# 우측에 결과 출력
 with col2:
-    st.subheader("빠른 정보")
-    st.write(f"주사위: {num_dice}개 × {sides}면")
-    st.write("히스토리 저장:" , "예" if keep_history else "아니오")
-    if st.button("히스토리 비우기"):
-        st.session_state.dice_history = []
-        st.success("히스토리가 비워졌습니다.")
-
+    st.subheader("계산 결과")
+    if area is None or perimeter is None:
+        st.write("유효하지 않은 도형입니다.")
+    else:
+        st.metric("넓이 (area)", f"{area:.3f}")
+        st.metric("둘레 (perimeter)", f"{perimeter:.3f}")
+        # 간단한 요약
+        st.markdown(f"**요약**: 넓이 = {area:.3f}, 둘레 = {perimeter:.3f}")
 
 st.markdown("---")
-
-# 히스토리 표시 및 다운로드
-st.subheader("굴림 히스토리")
-if len(st.session_state.dice_history) == 0:
-    st.info("아직 저장된 굴림이 없습니다. '히스토리 저장'을 체크한 상태에서 굴려보세요.")
-else:
-    # 화면에 표로 보여주기
-    hist_df = pd.DataFrame([
-        {"timestamp": e["timestamp"], "num_dice": e["num_dice"], "sides": e["sides"], "results": str(e["results"]), "total": e["total"], "avg": e["avg"]}
-        for e in st.session_state.dice_history
-    ])
-    st.dataframe(hist_df, use_container_width=True)
-
-    # 다운로드 (CSV)
-    csv = hist_df.to_csv(index=False).encode('utf-8')
-    st.download_button("히스토리 다운로드 (CSV)", data=csv, file_name="dice_history.csv", mime="text/csv")
-
-
-# 각주
-st.markdown("---")
-st.markdown("### 각주")
-st.markdown("""
-[A] 주사위 굴림은 `random.randint(1, sides)`를 사용합니다.  
-[B] 히스토리는 세션 상태(`st.session_state.dice_history`)에 저장되며, 브라우저 세션이 끝나면 사라집니다.  
-[C] 더 고급 기능(시뮬레이션 반복, 통계 테스트 등)이 필요하면 알려주세요.
-""")
+st.markdown("도움: 삼각형의 경우 슬라이더로 변 길이를 조정해 삼각형 부등식이 성립하는지 확인하세요.")
 
